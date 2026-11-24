@@ -1,0 +1,184 @@
+
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WILDLIFE IN MOTION</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#111114;color:white;font-family:Arial,sans-serif}
+header{text-align:center;padding:15px}
+h1{font-size:22px;letter-spacing:2px;margin:5px}
+small{color:#aaa}
+main{max-width:900px;margin:auto;padding:10px}
+canvas{display:block;width:100%;background:#111114;border:1px solid #333}
+.controls{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+button,label{background:#29292f;color:white;border:1px solid #555;
+padding:10px 13px;border-radius:8px;font-size:14px}
+button:active{background:#555}
+input[type=range]{width:100%}
+label input{display:none}
+.info{color:#aaa;font-size:13px;margin:8px 0}
+</style>
+</head>
+<body>
+<header>
+<h1>WILDLIFE IN MOTION</h1>
+<small>Created by BOUGHAZI ALI</small>
+</header>
+<main>
+<canvas id="art" width="700" height="700"></canvas>
+
+<div class="controls">
+<label>📷 Photo<input id="photo" type="file" accept="image/*"></label>
+<button id="wind">🌬 Wind: ON</button>
+<button id="save">💾 Save PNG</button>
+<button id="csvout">🎨 Export palette CSV</button>
+<label>📂 Import CSV<input id="csv" type="file" accept=".csv,text/csv"></label>
+</div>
+
+<p class="info">Disc size</p>
+<input id="size" type="range" min="4" max="24" value="10">
+
+<p class="info">Number of colors</p>
+<input id="colors" type="range" min="8" max="128" value="48">
+
+<p class="info" id="status">Choose a photo to begin.</p>
+</main>
+
+<script>
+const canvas=document.getElementById("art");
+const ctx=canvas.getContext("2d");
+const photo=document.getElementById("photo");
+const size=document.getElementById("size");
+const colors=document.getElementById("colors");
+const status=document.getElementById("status");
+
+let img=new Image();
+let loaded=false;
+let wind=true;
+let discs=[];
+let palette=[];
+let gust=0;
+let gustTarget=0;
+
+function makePalette(){
+ palette=[];
+ const n=Number(colors.value);
+ for(let i=0;i<n;i++){
+  const hue=i*360/n;
+  palette.push(`hsl(${hue},75%,55%)`);
+ }
+}
+
+function nearestColor(r,g,b){
+ let best=palette[0],distance=Infinity;
+ for(const c of palette){
+  const m=c.match(/\d+/g).map(Number);
+  const h=m[0]*Math.PI/180;
+  const rr=255*(1-Math.abs((h/Math.PI)%2-1));
+  const d=(r-rr)**2+(g-128)**2+(b-128)**2;
+  if(d<distance){distance=d;best=c}
+ }
+ return best;
+}
+
+function build(){
+ if(!loaded)return;
+ makePalette();
+ const s=Number(size.value);
+ const w=canvas.width,h=canvas.height;
+ const scale=Math.min(w/img.width,h/img.height);
+ const iw=img.width*scale,ih=img.height*scale;
+ const ox=(w-iw)/2,oy=(h-ih)/2;
+
+ const temp=document.createElement("canvas");
+ temp.width=w;temp.height=h;
+ const t=temp.getContext("2d");
+ t.fillStyle="#111114";t.fillRect(0,0,w,h);
+ t.drawImage(img,ox,oy,iw,ih);
+ const data=t.getImageData(0,0,w,h).data;
+ discs=[];
+ for(let y=s/2;y<h;y+=s){
+  for(let x=s/2;x<w;x+=s){
+   const i=(Math.floor(y)*w+Math.floor(x))*4;
+   const r=data[i],g=data[i+1],b=data[i+2];
+   if(r+g+b<35)continue;
+   discs.push({x,y,color:`rgb(${r},${g},${b})`,
+    dx:Math.random()*2-1,dy:Math.random()*2-1,
+    phase:Math.random()*6.28});
+  }
+ }
+ status.textContent=discs.length+" discs";
+}
+
+photo.onchange=e=>{
+ const file=e.target.files[0];
+ if(!file)return;
+ img=new Image();
+ img.onload=()=>{loaded=true;build()};
+ img.src=URL.createObjectURL(file);
+};
+
+size.oninput=build;
+colors.oninput=build;
+
+document.getElementById("wind").onclick=()=>{
+ wind=!wind;
+ document.getElementById("wind").textContent=wind?"🌬 Wind: ON":"🌬 Wind: OFF";
+};
+
+function animate(){
+ ctx.fillStyle="#111114";
+ ctx.fillRect(0,0,canvas.width,canvas.height);
+ if(wind){
+  gustTarget=(Math.random()-.5)*2.5;
+  gust+=(gustTarget-gust)*.015;
+ }
+ const s=Number(size.value);
+ for(const d of discs){
+  const sway=wind?Math.sin(Date.now()*.001+d.phase)*2:0;
+  const x=d.x+gust*4+sway;
+  const y=d.y+Math.sin(Date.now()*.0007+d.phase)*1.5;
+  ctx.beginPath();
+  ctx.fillStyle=d.color;
+  ctx.arc(x,y,s*.48,0,Math.PI*2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.fillStyle="rgba(220,220,220,.55)";
+  ctx.arc(x+s*.18,y-s*.18,s*.16,0,Math.PI*2);
+  ctx.fill();
+ }
+ requestAnimationFrame(animate);
+}
+animate();
+
+document.getElementById("save").onclick=()=>{
+ const a=document.createElement("a");
+ a.download="wildlife-in-motion.png";
+ a.href=canvas.toDataURL("image/png");
+ a.click();
+};
+
+document.getElementById("csvout").onclick=()=>{
+ const text="color\n"+discs.map(d=>d.color).join("\n");
+ const blob=new Blob([text],{type:"text/csv"});
+ const a=document.createElement("a");
+ a.href=URL.createObjectURL(blob);
+ a.download="palette.csv";a.click();
+};
+
+document.getElementById("csv").onchange=e=>{
+ const file=e.target.files[0];
+ if(!file)return;
+ const reader=new FileReader();
+ reader.onload=()=>{
+  palette=reader.result.split(/\r?\n/).slice(1).filter(Boolean);
+  status.textContent="CSV palette imported: "+palette.length+" colors";
+ };
+ reader.readAsText(file);
+};
+</script>
+</body>
+</html>
